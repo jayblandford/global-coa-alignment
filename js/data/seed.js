@@ -66,7 +66,7 @@ const NEEDS_CHANGE = [
 const CANT_USE = [
   'Not applicable to this entity’s business model.',
   'Conflicts with local statutory presentation; see objection.',
-  'Entity does not hold this asset class.',
+  'Account not used in this entity’s operations.',
 ];
 
 function abbreviate(name) {
