@@ -15,35 +15,81 @@ Rolling out one global chart of accounts across 200+ legal entities is mostly a 
 
 This app keeps all of that in one workflow with a full audit trail.
 
-## What it does (MVP scope)
+## Try it
 
-| Capability | Description |
+Pick a role on the start screen and switch at any time:
+
+| Role | What you can do |
 |---|---|
-| **Alignment dashboard** | Wave 1: 30 of 214 entities. Approval progress, entity adoption by region, open objections, approver bottlenecks, legacy-to-global account reduction |
-| **Approval inbox & audit trail** | Tiered workflow: Entity Analyst → Regional Controller → Global Accounting Head, with every decision logged |
-| **Entity fit-check votes** | Each entity marks every proposed account *Fits / Needs change / Can't use* |
-| **Local extension requests** | Formal requests for country accounts, automatically screened with "is this an account or a dimension?" |
-| **Formal objections** | Blocking issues that must be resolved before final approval |
-| **Legacy mapping** | 1:1, N:1 and 1:N mappings from three legacy ERPs, with S/4 attribute-conflict checks |
-| **S/4HANA export** | Load-ready files for the approved chart |
+| **Global Head of Accounting** | Approve, reject or return accounts; decide escalated requests; resolve any objection; bulk-approve clean accounts |
+| **Regional Controller** (Americas / EMEA / APAC) | Recommend or return accounts and local requests for the region; resolve objections from the region's entities; remediate legacy mapping conflicts |
+| **Entity Accounting Analyst** (30 entities) | Fit-check every account (*Fits / Needs change / Can't use*); raise a formal objection that blocks approval; request a country or new global account |
+
+## What it does
+
+| Screen | Highlights |
+|---|---|
+| **Alignment dashboard** | Wave 1 of 4 (30 of 214 entities); approval pipeline; adoption by region; fit-check completion per entity; approver queues; most-contested accounts |
+| **My inbox** | Role-specific queue with one-click actions and bulk actions for accounts without objections |
+| **Account detail** | Workflow stepper, entity-by-entity votes, objections with resolution, S/4HANA attributes, full history |
+| **Requests** | Live "is this an account or a dimension?" and duplicate checks as the analyst types |
+| **Legacy mapping** | ~600 accounts from SAP ECC, Oracle EBS and local ERPs; 1:1 / N:1 / 1:N; open-item and reconciliation-account conflict checks with remediation |
+| **Audit trail** | Append-only log of every decision, exportable to CSV |
+| **S/4HANA export** | Cutover readiness check and load files modeled on the Migration Cockpit G/L account template |
 
 ## SAP S/4HANA design assumptions
 
-- One **global operational chart of accounts** plus **country (alternative) charts** for statutory reporting
-- **8-digit, range-based numbering**: 1 assets · 2 liabilities · 3 equity · 4 revenue · 5–7 cost of sales / opex · 8 other · 9 secondary cost / statistical
-- Universal Journal aware: cost elements are G/L accounts, so Controlling is in scope
-- US GAAP leading ledger; IFRS and local GAAP as parallel ledgers
+- One **global operational chart of accounts** (`JGCA`) plus **country (alternative) charts** for statutory reporting
+- **8-digit, range-based numbering**: 1 assets · 2 liabilities · 3 equity · 4 revenue · 5–7 cost of sales / opex · 8 other · 9 secondary cost
+- Universal Journal aware: cost elements are G/L accounts, so Controlling is in scope; analysis belongs in profit center, segment and functional area, not extra accounts
+- US GAAP leading ledger (0L); IFRS and local GAAP as parallel ledgers
 - Post-go-live change governance is out of scope. That is the job of SAP MDG-F.
 
-## Tech stack
+## Architecture
 
-- Static front end (HTML/JS, no build step), hosted on **Vercel**
-- **Supabase** (Postgres) for shared data, with a nightly demo reset
-- Rule-based "smart checks", each designed to be swapped for a Claude API call later
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI[Views<br/>dashboard · inbox · account · requests · mapping · audit · export]
+    Store[store.js<br/>workflow rules + audit trail]
+    Rules[rules.js<br/>smart checks]
+    Seed[seed.js<br/>deterministic demo data]
+    UI --> Store --> Rules
+    Store --> Seed
+  end
+  Store -- REST, publishable key --> SB[(Supabase Postgres<br/>demo_state + RLS)]
+  Cron[pg_cron nightly reset] --> SB
+  GH[GitHub repo] -- push --> Vercel[Vercel static hosting] --> Browser
+```
 
-## Status
+- **No build step.** Plain ES modules, hand-built SVG charts, zero runtime dependencies.
+- **Shared state:** one JSON document in Supabase, secured with row-level security. Everyone sees the same program, and a nightly `pg_cron` job resets it. If Supabase is unreachable, the app falls back to local demo data in the browser.
+- **Deterministic seed:** every reset produces the same story.
 
-🚧 In active development. See [`docs/requirements.md`](docs/requirements.md).
+### AI-ready checks
+
+`js/rules.js` holds the smart checks: account-vs-dimension, duplicate names, number range vs. account type, mapping attribute conflicts, mapping suggestions. They are rule-based today. Each function is a seam that a Claude API call can replace (for example, a model reading the justification and the local statute) without changing the UI.
+
+## Run locally
+
+```bash
+python3 -m http.server 8000   # then open http://localhost:8000
+```
+
+## Deploy your own
+
+1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql) in the SQL Editor.
+2. Put the project URL and **publishable** key in [`js/config.js`](js/config.js). Never the secret key.
+3. Import the repo in Vercel (framework preset: *Other*, no build command).
+
+## Roadmap
+
+- Normalized tables (accounts, votes, objections, audit) with per-user auth
+- Specialist reviewers: Tax, FP&A, Treasury, SAP/IT, Internal Audit
+- Claude-powered checks and feedback summaries
+- Country chart designer and translation workflow
+
+See [`docs/requirements.md`](docs/requirements.md).
 
 ---
 Built by Jay Blandford with Claude.
